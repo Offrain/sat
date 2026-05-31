@@ -17,7 +17,7 @@ body {
     border-bottom: 1px solid #ddd;
 }
 
-.variant {
+.variant {bl
     display: block;
     margin: 5px 0;
     cursor: pointer;
@@ -156,11 +156,6 @@ function renderCustomQuestions(questionsArray, globalStartIndex = 0) {
             input.type = 'radio';
             input.name = 'q' + qIndex;
             input.value = v;
-
-            input.addEventListener('change', () => {
-                checkAnswer(qIndex, v, correctValue);
-                disableAll(qIndex);
-            });
 
             label.appendChild(input);
             label.appendChild(document.createTextNode(' ' + v));
