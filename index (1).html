@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="kk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Тест жүйесі</title>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+}
+
+.question {
+    margin-bottom: 25px;
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+}
+
+.variant {
+    display: block;
+    margin: 5px 0;
+    cursor: pointer;
+}
+
+.correct { color: green; }
+.incorrect { color: red; }
+
+.pagination {
+    margin-top: 20px;
+}
+
+.pagination button {
+    margin: 5px;
+    padding: 5px 10px;
+    cursor: pointer;
+}
+
+.active {
+    background: blue;
+    color: white;
+    font-weight: bold;
+}
+
+pre {
+    white-space: pre-line;
+}
+</style>
+</head>
+
+<body>
+
+<h1>Тест</h1>
+
+<button onclick="shuffleQuestions()">Барлық сұрақтарды араластыру</button>
+<button onclick="shuffleCurrentPage()">Осы беттегі сұрақтарды араластыру</button>
+<button onclick="resetAll()">Қайта бастау</button>
+<button onclick="showAllAnswers()">Жауап көрсету</button>
+
+<div id="quiz"></div>
+<div id="pagination"></div>
+
+<script>
+let currentPage = 1;
+const questionsPerPage = 50;
+let allQuestions = [];
+
+async function loadTest() {
+    try {
+        const response = await fetch('test.txt');
+        const text = await response.text();
+
+        allQuestions = text
+            .split('\n')
+            .reduce((acc, line) => {
+                line = line.trim();
+                if (!line) return acc;
+
+                if (line.startsWith('?')) {
+                    acc.push(line);
+                } else if (acc.length > 0) {
+                    acc[acc.length - 1] += '\n' + line;
+                }
+                return acc;
+            }, [])
+            .filter(q => q.length > 0);
+
+        renderPage(currentPage);
+        renderPagination();
+    } catch (error) {
+        console.error("Тест файлын жүктеу мүмкін болмады:", error);
+        document.getElementById('quiz').innerHTML = '<p style="color:red;">Қате: test.txt файлы табылмады немесе жүктелмеді.</p>';
+    }
+}
+
+function renderPage(page) {
+    const start = (page - 1) * questionsPerPage;
+    const end = page * questionsPerPage;
+    const pageQuestions = allQuestions.slice(start, end);
+
+    renderCustomQuestions(pageQuestions, start);
+}
+
+function renderCustomQuestions(questionsArray, globalStartIndex = 0) {
+    const quiz = document.getElementById('quiz');
+    quiz.innerHTML = '';
+
+    questionsArray.forEach((block, index) => {
+        const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
+
+        let question = '';
+        let variants = [];
+        let correctValues = [];
+
+        lines.forEach(line => {
+            if (line.startsWith('?')) {
+                question = line.substring(1).trim();
+            } else if (line.startsWith('+')) {
+                const val = line.substring(1).trim();
+                variants.push(val);
+                correctValues.push(val);
+            } else if (line.startsWith('-')) {
+                variants.push(line.substring(1).trim());
+            }
+        });
+
+        const isMulti = correctValues.length > 1;
+        const shuffled = shuffle([...variants]);
+        const qIndex = globalStartIndex + index;
+
+        const div = document.createElement('div');
+        div.className = 'question';
+
+        const p = document.createElement('p');
+        p.style.whiteSpace = 'pre-line';
+        p.textContent = (qIndex + 1) + '. ' + question;
+        div.appendChild(p);
+
+        const result = document.createElement('div');
+        result.id = 'result' + qIndex;
+
+        shuffled.forEach((v) => {
+            const label = document.createElement('label');
+            label.className = 'variant';
+
+            const input = document.createElement('input');
+            input.type = isMulti ? 'checkbox' : 'radio';
+            input.name = 'q' + qIndex;
+            input.value = v;
+
+            input.addEventListener('change', () => {
+                const selectedInputs = document.querySelectorAll(`input[name="q${qIndex}"]:checked`);
+                const selectedValues = Array.from(selectedInputs).map(i => i.value);
+
+                if (!isMulti) {
+                    checkAnswer(qIndex, selectedValues, correctValues);
+                    disableAll(qIndex);
+                    return;
+                }
+
+                if (selectedValues.length === correctValues.length) {
+                    checkAnswer(qIndex, selectedValues, correctValues);
+                    disableAll(qIndex);
+                }
+            });
+
+            label.appendChild(input);
+            label.appendChild(document.createTextNode(' ' + v));
+            div.appendChild(label);
+        });
+
+        div.appendChild(result);
+        quiz.appendChild(div);
+    });
+}
+
+function checkAnswer(qIndex, selectedValues, correctValues) {
+    const result = document.getElementById('result' + qIndex);
+
+    const isCorrect =
+        selectedValues.length === correctValues.length &&
+        selectedValues.every(v => correctValues.includes(v));
+
+    if (isCorrect) {
+        result.textContent = 'Дұрыс ✅';
+        result.className = 'correct';
+    } else {
+        result.innerHTML = `Қате ❌<br>Дұрыс жауаптар: <b>${correctValues.join(', ')}</b>`;
+        result.className = 'incorrect';
+    }
+}
+
+function showAllAnswers() {
+    const questions = document.querySelectorAll('.question');
+    // Вычисляем правильный индекс для текущей страницы
+    const startIndex = (currentPage - 1) * questionsPerPage;
+
+    questions.forEach((q, index) => {
+        const globalIndex = startIndex + index;
+        const block = allQuestions[globalIndex];
+        if (!block) return;
+
+        const lines = block.split('\n').map(l => l.trim());
+        let correctValues = [];
+
+        lines.forEach(line => {
+            if (line.startsWith('+')) {
+                correctValues.push(line.substring(1).trim());
+            }
+        });
+
+        const inputs = q.querySelectorAll('input');
+
+        inputs.forEach(inp => {
+            inp.disabled = true; // Блокируем инпуты после показа ответов
+            if (correctValues.includes(inp.value)) {
+                inp.parentElement.style.color = 'green';
+                inp.parentElement.style.fontWeight = 'bold';
+            }
+        });
+
+        const resultDiv = document.getElementById('result' + globalIndex);
+        if (resultDiv) {
+            resultDiv.innerHTML = `✔ Дұрыс жауап: <b>${correctValues.join(', ')}</b>`;
+            resultDiv.className = 'correct';
+        }
+    });
+}
+
+function disableAll(qIndex) {
+    document.querySelectorAll(`input[name="q${qIndex}"]`)
+        .forEach(el => el.disabled = true);
+}
+
+function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        let j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
+function shuffleQuestions() {
+    allQuestions = shuffle([...allQuestions]);
+    currentPage = 1;
+    renderPage(currentPage);
+    renderPagination();
+}
+
+function shuffleCurrentPage() {
+    const start = (currentPage - 1) * questionsPerPage;
+    const end = start + questionsPerPage;
+
+    const part = allQuestions.slice(start, end);
+    const shuffled = shuffle([...part]);
+
+    for (let i = 0; i < shuffled.length; i++) {
+        allQuestions[start + i] = shuffled[i];
+    }
+
+    renderPage(currentPage);
+}
+
+function renderPagination() {
+    const div = document.getElementById('pagination');
+    div.innerHTML = '';
+
+    const pages = Math.ceil(allQuestions.length / questionsPerPage);
+
+    for (let i = 1; i <= pages; i++) {
+        const btn = document.createElement('button');
+        btn.textContent = i;
+
+        if (i === currentPage) btn.classList.add('active');
+
+        btn.onclick = () => {
+            currentPage = i;
+            renderPage(i);
+            renderPagination();
+        };
+
+        div.appendChild(btn);
+    }
+}
+
+function resetAll() {
+    currentPage = 1; // Возвращаемся на первую страницу при сбросе
+    loadTest();
+}
+
+loadTest();
+</script>
+
+</body>
+</html>
