@@ -156,7 +156,9 @@ function renderCustomQuestions(questionsArray, globalStartIndex = 0) {
             input.type = 'radio';
             input.name = 'q' + qIndex;
             input.value = v;
-
+            input.addEventListener('change', () => {
+                checkAnswer(qIndex, v, correctValue);
+    });
             label.appendChild(input);
             label.appendChild(document.createTextNode(' ' + v));
             div.appendChild(label);
